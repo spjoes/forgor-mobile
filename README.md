@@ -25,8 +25,6 @@ This app is fully compatible with the [Forgor TUI](https://github.com/spjoes/for
 
 You can share passwords between the mobile app and desktop TUI seamlessly.
 
-> Please Note: you cannot currently sync 1 vault between 2 devices. While this is planned for the future, right now you can only share individual passwords via E2E encrypted LAN Sharing
-
 ## Getting Started
 
 ### Prerequisites
@@ -91,11 +89,24 @@ npx expo run:android
 
 When someone shares a password with you, it appears at the top of the Vault tab. Tap to accept or reject.
 
+### Cloud Sync
+
+The mobile app also supports cloud sync with a self-hosted Forgor coordination server:
+
+1. **Setup a server**: Create or join a selfhosted coordination server
+2. **Create a vault**: Go to the **Sync** tab, enter your server URL, and tap "Create New Vault"
+3. **Invite devices**: Share your Device ID with another device, then use "Invite Device" to generate an invite code
+4. **Join from another device**: Enter the server URL and use the invite code to join the vault
+
+All data remains end-to-end encrypted. The coordination server only sees encrypted blobs and cannot read your passwords.
+
+The sync protocol is compatible with the Go TUI, so you can sync between mobile devices and desktop clients easily.
+
 ## Project Structure
 
 ```
 forgor-mobile/forgor/
-├── app/                    # Expo Router screens
+├── app/                   # Expo Router screens
 │   ├── (tabs)/            # Tab navigation
 │   │   ├── index.tsx      # Vault (password list)
 │   │   ├── nearby.tsx     # Device discovery
@@ -108,7 +119,15 @@ forgor-mobile/forgor/
 │   ├── crypto.ts          # NaCl encryption
 │   ├── storage.ts         # Encrypted vault (AsyncStorage)
 │   ├── discovery.ts       # mDNS peer discovery
-│   └── sharing.ts         # HTTP client for sharing
+│   ├── sharing.ts         # HTTP client for sharing
+│   └── sync/              # Cloud sync with coordination server
+│       ├── types.ts       # Sync protocol types
+│       ├── cbe.ts         # Canonical Binary Encoding
+│       ├── signbytes.ts   # Signature computation
+│       ├── crypto.ts      # Ed25519 signing, key derivation
+│       ├── client.ts      # HTTP client for sync API
+│       ├── state.ts       # Sync state storage
+│       └── engine.ts      # Sync logic
 ├── context/
 │   └── AppContext.tsx     # Global state management
 └── types/
