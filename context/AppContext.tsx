@@ -35,6 +35,7 @@ interface AppContextType extends AppState {
   initialize: (password: string, deviceName: string) => Promise<void>;
   unlock: (password: string) => Promise<void>;
   lock: () => void;
+  resetApp: () => Promise<void>;
   addEntry: (entry: Entry) => Promise<void>;
   updateEntry: (entry: Entry) => Promise<void>;
   deleteEntry: (id: string) => Promise<void>;
@@ -218,6 +219,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
       syncEntrySchemes: {},
     }));
   }, []);
+
+  const resetApp = useCallback(async () => {
+    try {
+      if (syncEngine) {
+        try {
+          await syncEngine.leaveVault();
+        } catch {
+          // Ignore; reset will clear local state anyway.
+        }
+      }
+
+      await syncState.clearAllSyncState();
+      syncState.clearVaultKey();
+      await vaultStore.clearAll();
+    } finally {
+      httpServer.stop();
+      discoveryService.stop();
+      setSyncEngine(null);
+      setState({
+        isInitialized: false,
+        isUnlocked: false,
+        entries: [],
+        friends: [],
+        device: null,
+        peers: new Map(),
+        pendingShares: [],
+        syncStatus: { status: 'disconnected' },
+        syncConfigured: false,
+        syncDeviceId: null,
+        syncVaultId: null,
+        syncServerUrl: null,
+        syncSchemeCutover: null,
+        syncEntrySchemes: {},
+      });
+    }
+  }, [syncEngine]);
 
   const saveEntriesAndPush = useCallback(async (newEntries: Entry[], changedEntry?: Entry, op?: 'upsert' | 'delete') => {
     await vaultStore.saveEntries(newEntries);
@@ -547,6 +584,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         initialize,
         unlock,
         lock,
+        resetApp,
         addEntry,
         updateEntry,
         deleteEntry,

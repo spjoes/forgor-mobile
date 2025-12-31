@@ -12,8 +12,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../context/AppContext';
 
 export default function SettingsScreen() {
-  const { regenerateDeviceKeys, lock } = useApp();
+  const { regenerateDeviceKeys, lock, resetApp } = useApp();
   const [loading, setLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [isError, setIsError] = useState(false);
 
@@ -52,6 +53,38 @@ export default function SettingsScreen() {
     lock();
   }, [lock]);
 
+  const handleResetApp = useCallback(() => {
+    Alert.alert(
+      '⚠️ Reset this device?',
+      'This will:\n' +
+        '- Remove this device from the vault locally\n' +
+        '- Delete all local passwords, friends, and device keys\n' +
+        '- Clear sync configuration and pending data\n\n' +
+        'Your sync server data will NOT be deleted.\n' +
+        'You will need to set up this device again to rejoin.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset App',
+          style: 'destructive',
+          onPress: async () => {
+            setResetting(true);
+            setStatusMessage('');
+            setIsError(false);
+            try {
+              await resetApp();
+            } catch (e) {
+              setStatusMessage(e instanceof Error ? e.message : 'Failed to reset app');
+              setIsError(true);
+            } finally {
+              setResetting(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [resetApp]);
+
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.title}>Settings</Text>
@@ -74,13 +107,27 @@ export default function SettingsScreen() {
         <TouchableOpacity
           style={[styles.button, styles.dangerButton]}
           onPress={handleRegenerateKeys}
-          disabled={loading}
+          disabled={loading || resetting}
         >
           <Ionicons name="key-outline" size={20} color="#f38ba8" />
           <View style={styles.buttonContent}>
             <Text style={styles.dangerButtonText}>Regenerate Device Keys</Text>
             <Text style={styles.buttonHint}>
               Creates new cryptographic keys for this device
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.dangerButton]}
+          onPress={handleResetApp}
+          disabled={loading || resetting}
+        >
+          <Ionicons name="trash-outline" size={20} color="#f38ba8" />
+          <View style={styles.buttonContent}>
+            <Text style={styles.dangerButtonText}>Reset App</Text>
+            <Text style={styles.buttonHint}>
+              Removes this device from the vault and clears all local data
             </Text>
           </View>
         </TouchableOpacity>
@@ -92,7 +139,7 @@ export default function SettingsScreen() {
         </Text>
       ) : null}
 
-      {loading && <ActivityIndicator style={styles.loader} color="#89b4fa" />}
+      {(loading || resetting) && <ActivityIndicator style={styles.loader} color="#89b4fa" />}
     </ScrollView>
   );
 }

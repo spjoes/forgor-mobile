@@ -173,6 +173,11 @@ class VaultStore {
   async updateDeviceName(name: string): Promise<void> {
     await AsyncStorage.setItem(KEYS.DEVICE_NAME, name);
   }
+
+  async clearAll(): Promise<void> {
+    this.lock();
+    await AsyncStorage.multiRemove(Object.values(KEYS));
+  }
 }
 
 export const vaultStore = new VaultStore();
