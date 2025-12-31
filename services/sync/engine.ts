@@ -32,6 +32,7 @@ import {
   signBytesDeviceBundle,
   signBytesEvent,
   signBytesMemberAdd,
+  signBytesMemberRemove,
   signBytesInvite,
   signBytesInviteClaim,
 } from './signbytes';
@@ -311,6 +312,63 @@ export class SyncEngine {
         throw e;
       }
     }
+  }
+
+  async removeMember(targetDeviceId: string): Promise<void> {
+    const keys = await this.state.getDeviceKeys();
+    if (!keys) throw new Error('Device keys not initialized');
+
+    const vaultId = await this.state.getVaultId();
+    if (!vaultId) throw new Error('Vault not configured');
+
+    const ownerDeviceId = await this.state.getOwnerDeviceId();
+    if (!ownerDeviceId || ownerDeviceId !== keys.deviceId) {
+      throw new Error('Only the vault owner can remove devices');
+    }
+    if (targetDeviceId === ownerDeviceId) {
+      throw new Error('Cannot remove the owner device');
+    }
+
+    const memberHead = await this.state.getMembershipHead();
+    if (!memberHead) {
+      throw new Error('Membership head not found');
+    }
+
+    const newMemberSeq = memberHead.memberSeq + 1;
+    const memberEventId = newUUID();
+    const deviceIdBytes = hexToBytes(keys.deviceId);
+    const targetDeviceIdBytes = hexToBytes(targetDeviceId);
+
+    const signBytes = signBytesMemberRemove(
+      uuidToBytes(memberEventId),
+      uuidToBytes(vaultId),
+      newMemberSeq,
+      memberHead.memberHeadHash,
+      deviceIdBytes,
+      targetDeviceIdBytes
+    );
+
+    const signature = sign(keys.privkeySign, signBytes);
+
+    const memberEvent: MemberEvent = {
+      msg_type: 'member_remove',
+      member_event_id: memberEventId,
+      vault_id: vaultId,
+      member_seq: newMemberSeq.toString(),
+      prev_hash: bytesToBase64(memberHead.memberHeadHash),
+      actor_device_id: keys.deviceId,
+      subject_device_id: targetDeviceId,
+      signature: bytesToBase64(signature),
+    };
+
+    await this.client.createMemberEvent(vaultId, memberEvent);
+
+    const eventHash = sha256(signBytes);
+    await this.state.setMembershipHead({
+      memberSeq: newMemberSeq,
+      memberHeadHash: eventHash,
+    });
+    await this.state.removeVerifiedMember(targetDeviceId);
   }
 
   private async acceptInviteClaim(claim: InviteClaim): Promise<void> {

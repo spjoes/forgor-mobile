@@ -29,6 +29,8 @@ interface AppState {
   syncServerUrl: string | null;
   syncSchemeCutover: Date | null;
   syncEntrySchemes: Record<string, string>;
+  syncMembers: string[];
+  syncIsOwner: boolean;
 }
 
 interface AppContextType extends AppState {
@@ -50,11 +52,14 @@ interface AppContextType extends AppState {
   registerDeviceOnly: (serverUrl: string) => Promise<void>;
   syncNow: () => Promise<void>;
   inviteDevice: (targetDeviceId: string) => Promise<string>;
+  removeSyncDevice: (targetDeviceId: string) => Promise<void>;
   leaveVault: () => Promise<void>;
   refreshSyncStatus: () => Promise<void>;
   regenerateDeviceKeys: () => Promise<void>;
   syncSchemeCutover: Date | null;
   syncEntrySchemes: Record<string, string>;
+  syncMembers: string[];
+  syncIsOwner: boolean;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -75,6 +80,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     syncServerUrl: null,
     syncSchemeCutover: null,
     syncEntrySchemes: {},
+    syncMembers: [],
+    syncIsOwner: false,
   });
 
   const [syncEngine, setSyncEngine] = useState<SyncEngine | null>(null);
@@ -103,6 +110,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const members = await syncState.getVerifiedMembers();
     const pending = await syncState.getPendingEntries();
     const schemes = await syncState.getEntrySchemes();
+    const ownerDeviceId = await syncState.getOwnerDeviceId();
+    const isOwner = !!ownerDeviceId && keys?.deviceId === ownerDeviceId;
 
     setState((prev) => ({
       ...prev,
@@ -111,6 +120,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       syncServerUrl: serverUrl,
       syncDeviceId: keys?.deviceId || null,
       syncEntrySchemes: schemes,
+      syncMembers: members.map((member) => member.deviceId),
+      syncIsOwner: isOwner,
       syncStatus: {
         ...prev.syncStatus,
         memberCount: members.length,
@@ -217,8 +228,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
       syncStatus: { status: 'disconnected' },
       syncSchemeCutover: null,
       syncEntrySchemes: {},
+      syncMembers: [],
+      syncIsOwner: false,
     }));
   }, []);
+
+  const removeSyncDevice = useCallback(async (deviceId: string) => {
+    if (!syncEngine) {
+      throw new Error('Sync not configured');
+    }
+
+    await syncEngine.removeMember(deviceId);
+    await syncEngine.refreshMembership();
+
+    const members = await syncState.getVerifiedMembers();
+    const keys = await syncState.getDeviceKeys();
+    const ownerDeviceId = await syncState.getOwnerDeviceId();
+    const isOwner = !!ownerDeviceId && keys?.deviceId === ownerDeviceId;
+
+    setState((prev) => ({
+      ...prev,
+      syncStatus: {
+        ...prev.syncStatus,
+        status: 'synced',
+        lastSync: new Date(),
+        memberCount: members.length,
+      },
+      syncMembers: members.map((member) => member.deviceId),
+      syncIsOwner: isOwner,
+    }));
+  }, [syncEngine]);
 
   const resetApp = useCallback(async () => {
     try {
@@ -252,6 +291,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         syncServerUrl: null,
         syncSchemeCutover: null,
         syncEntrySchemes: {},
+        syncMembers: [],
+        syncIsOwner: false,
       });
     }
   }, [syncEngine]);
@@ -509,6 +550,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       const members = await syncState.getVerifiedMembers();
+      const ownerDeviceId = await syncState.getOwnerDeviceId();
+      const deviceId = (await syncState.getDeviceKeys())?.deviceId ?? null;
+      const isOwnerNow = !!ownerDeviceId && deviceId === ownerDeviceId;
 
       setState((prev) => ({
         ...prev,
@@ -519,6 +563,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           pendingCount: pending.length,
         },
         syncEntrySchemes: schemes,
+        syncMembers: members.map((member) => member.deviceId),
+        syncIsOwner: isOwnerNow,
       }));
     } catch (e) {
       setState((prev) => ({
@@ -560,6 +606,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       syncStatus: { status: 'disconnected' },
       syncConfigured: false,
       syncVaultId: null,
+      syncEntrySchemes: {},
+      syncMembers: [],
+      syncIsOwner: false,
     }));
   }, [syncEngine, refreshSyncStatus]);
 
@@ -599,6 +648,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         registerDeviceOnly,
         syncNow,
         inviteDevice,
+        removeSyncDevice,
         leaveVault,
         refreshSyncStatus,
         regenerateDeviceKeys,

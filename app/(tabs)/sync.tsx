@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useApp } from '../../context/AppContext';
 
-type Mode = 'list' | 'setup' | 'invite' | 'join';
+type Mode = 'list' | 'setup' | 'invite' | 'join' | 'devices';
 
 export default function SyncScreen() {
   const {
@@ -21,10 +21,13 @@ export default function SyncScreen() {
     syncConfigured,
     syncDeviceId,
     syncVaultId,
+    syncMembers,
+    syncIsOwner,
     setupSync,
     registerDeviceOnly,
     syncNow,
     inviteDevice,
+    removeSyncDevice,
     leaveVault,
   } = useApp();
 
@@ -36,7 +39,6 @@ export default function SyncScreen() {
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [isError, setIsError] = useState(false);
-  const [deviceRegistered, setDeviceRegistered] = useState(false);
 
   const handleSetupCreate = useCallback(async () => {
     if (!serverUrl.trim()) {
@@ -73,7 +75,6 @@ export default function SyncScreen() {
     setIsError(false);
     try {
       await registerDeviceOnly(serverUrl);
-      setDeviceRegistered(true);
       setMode('join');
       setStatusMessage('Device registered! Share your Device ID with the vault owner.');
       setIsError(false);
@@ -99,7 +100,6 @@ export default function SyncScreen() {
       setMode('list');
       setServerUrl('');
       setInviteCode('');
-      setDeviceRegistered(false);
       setStatusMessage('Successfully joined vault!');
       setIsError(false);
     } catch (e) {
@@ -170,6 +170,34 @@ export default function SyncScreen() {
       ]
     );
   }, [leaveVault]);
+
+  const handleRemoveDevice = useCallback((deviceId: string) => {
+    Alert.alert(
+      'Remove device?',
+      'This will revoke this device\'s access to the vault. It will not delete any server data. You can re-invite the device later.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setLoading(true);
+            setStatusMessage('');
+            try {
+              await removeSyncDevice(deviceId);
+              setStatusMessage('Device removed');
+              setIsError(false);
+            } catch (e) {
+              setStatusMessage(e instanceof Error ? e.message : 'Failed to remove device');
+              setIsError(true);
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [removeSyncDevice]);
 
   const copyToClipboard = useCallback(async (text: string, label: string) => {
     await Clipboard.setStringAsync(text);
@@ -293,6 +321,16 @@ export default function SyncScreen() {
               <Text style={styles.buttonText}>Invite Device</Text>
             </TouchableOpacity>
 
+            {syncIsOwner && (
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => setMode('devices')}
+              >
+                <Ionicons name="people-outline" size={20} color="#cdd6f4" />
+                <Text style={styles.buttonText}>Manage Devices</Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               style={[styles.button, styles.dangerButton]}
               onPress={handleLeaveVault}
@@ -316,6 +354,61 @@ export default function SyncScreen() {
             <Text style={styles.primaryButtonText}>Setup Sync</Text>
           </TouchableOpacity>
         </>
+      )}
+
+      {statusMessage ? (
+        <Text style={[styles.statusMessage, isError && styles.errorMessage]}>
+          {statusMessage}
+        </Text>
+      ) : null}
+
+      {loading && <ActivityIndicator style={styles.loader} color="#89b4fa" />}
+    </ScrollView>
+  );
+
+  const renderDevices = () => (
+    <ScrollView style={styles.container}>
+      <TouchableOpacity style={styles.backButton} onPress={() => setMode('list')}>
+        <Ionicons name="arrow-back" size={24} color="#cdd6f4" />
+        <Text style={styles.backText}>Back</Text>
+      </TouchableOpacity>
+
+      <Text style={styles.title}>Manage Devices</Text>
+      <Text style={styles.subtitle}>Only the vault owner can remove devices.</Text>
+
+      {syncMembers.length === 0 ? (
+        <Text style={styles.notConfiguredText}>No devices found for this vault.</Text>
+      ) : (
+        syncMembers.map((deviceId) => {
+          const isSelf = deviceId === syncDeviceId;
+          return (
+            <View key={deviceId} style={styles.deviceCard}>
+              <TouchableOpacity
+                style={styles.deviceInfo}
+                onPress={() => copyToClipboard(deviceId, 'Device ID')}
+              >
+                <Text style={styles.deviceIdText} numberOfLines={2}>
+                  {formatDeviceId(deviceId)}
+                </Text>
+                {isSelf && <Text style={styles.deviceTag}>This device</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.removeButton, isSelf && styles.removeButtonDisabled]}
+                onPress={() => handleRemoveDevice(deviceId)}
+                disabled={isSelf || loading}
+              >
+                <Ionicons
+                  name="trash-outline"
+                  size={18}
+                  color={isSelf ? '#6c7086' : '#f38ba8'}
+                />
+                <Text style={[styles.removeButtonText, isSelf && styles.removeButtonTextDisabled]}>
+                  Remove
+                </Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })
       )}
 
       {statusMessage ? (
@@ -530,6 +623,8 @@ export default function SyncScreen() {
       return renderJoin();
     case 'invite':
       return renderInvite();
+    case 'devices':
+      return renderDevices();
     default:
       return renderList();
   }
@@ -755,5 +850,43 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginTop: 20,
+  },
+  deviceCard: {
+    backgroundColor: '#313244',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  deviceInfo: {
+    flex: 1,
+  },
+  deviceTag: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#a6e3a1',
+  },
+  removeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#f38ba8',
+  },
+  removeButtonDisabled: {
+    borderColor: '#45475a',
+  },
+  removeButtonText: {
+    color: '#f38ba8',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  removeButtonTextDisabled: {
+    color: '#6c7086',
   },
 });
