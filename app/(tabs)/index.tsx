@@ -22,7 +22,16 @@ const FAB_MARGIN = 24;
 
 export default function VaultScreen() {
   const router = useRouter();
-  const { entries, deleteEntry, lock, pendingShares, acceptShare, rejectShare } = useApp();
+  const {
+    entries,
+    deleteEntry,
+    lock,
+    pendingShares,
+    acceptShare,
+    rejectShare,
+    syncSchemeCutover,
+    syncEntrySchemes,
+  } = useApp();
   const [search, setSearch] = useState('');
   const insets = useSafeAreaInsets();
   const tabBarSpace = TAB_BAR_HEIGHT + insets.bottom;
@@ -67,6 +76,17 @@ export default function VaultScreen() {
     );
   };
 
+  const getEntryScheme = (entry: Entry): 'legacy' | 'v2' => {
+    const mapped = syncEntrySchemes[entry.id];
+    if (mapped === 'v2' || mapped === 'legacy') {
+      return mapped;
+    }
+    if (!syncSchemeCutover) return 'legacy';
+    const updatedAt = new Date(entry.updated_at);
+    if (Number.isNaN(updatedAt.getTime())) return 'legacy';
+    return updatedAt >= syncSchemeCutover ? 'v2' : 'legacy';
+  };
+
   const renderEntry = ({ item }: { item: Entry }) => (
     <TouchableOpacity
       style={styles.entryCard}
@@ -74,7 +94,17 @@ export default function VaultScreen() {
       onLongPress={() => handleCopyPassword(item)}
     >
       <View style={styles.entryHeader}>
-        <Text style={styles.entryWebsite}>{item.website}</Text>
+        <View style={styles.entryTitleRow}>
+          <Text style={styles.entryWebsite}>{item.website}</Text>
+          <Text
+            style={[
+              styles.schemeBadge,
+              getEntryScheme(item) === 'v2' ? styles.schemeBadgeV2 : styles.schemeBadgeLegacy,
+            ]}
+          >
+            {getEntryScheme(item)}
+          </Text>
+        </View>
         <View style={styles.entryActions}>
           <TouchableOpacity onPress={() => handleCopyUsername(item)} style={styles.iconButton}>
             <Ionicons name="person-outline" size={20} color="#7f849c" />
@@ -197,11 +227,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
+  entryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    marginRight: 12,
+  },
   entryWebsite: {
     fontSize: 18,
     fontWeight: '600',
     color: '#cdd6f4',
-    flex: 1,
+  },
+  schemeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  schemeBadgeLegacy: {
+    color: '#fab387',
+    borderColor: '#fab387',
+    backgroundColor: 'rgba(250, 179, 135, 0.15)',
+  },
+  schemeBadgeV2: {
+    color: '#a6e3a1',
+    borderColor: '#a6e3a1',
+    backgroundColor: 'rgba(166, 227, 161, 0.15)',
   },
   entryActions: {
     flexDirection: 'row',

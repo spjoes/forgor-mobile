@@ -32,6 +32,14 @@ export default function TabLayout() {
         <Icon src={<VectorIcon family={Ionicons} name="people" />} />
         <Label>Friends</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="sync">
+        <Icon src={<VectorIcon family={Ionicons} name="cloud" />} />
+        <Label>Sync</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="settings">
+        <Icon src={<VectorIcon family={Ionicons} name="settings" />} />
+        <Label>Settings</Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
